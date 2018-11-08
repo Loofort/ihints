@@ -2,79 +2,153 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"sync"
 )
 
 const ihost = "https://search.itunes.apple.com/"
 
 func main() {
+	ff, err := os.OpenFile("query.txt", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		panic(err)
+	}
+	writeQ(ff, generateQueries(""))
+	ff.Close()
+
+	/////////////////
 	minPriority := int16(1000)
+	var wwg sync.WaitGroup
 
 	hintsc := make(chan []Hint)
-	go WriteHints(hintsc)
+	wwg.Add(1)
+	go func() {
+		defer wwg.Done()
+		WriteHints(hintsc)
+	}()
 
 	resultc := make(chan Result)
-	go writeResult(resultc)
+	wwg.Add(1)
+	go func() {
+		defer wwg.Done()
+		writeResult(resultc)
+	}()
 
+	wCount := 1
+	queriesc := make(chan []string, wCount)
+
+	var wg sync.WaitGroup
 	taskc := make(chan Task)
-	queriesc := make(chan []string)
+	for i := 0; i < wCount; i++ {
+		go func() {
+			for task := range taskc {
+				wg.Add(1)
+				if err := worker(minPriority, task, hintsc, resultc, queriesc); err != nil {
+					log.Printf("error for q %s : %v", task.Query, err)
+				}
+				wg.Done()
+			}
+		}()
+	}
 
-	// produce tasks
+	run(&wg, taskc, queriesc)
+	close(taskc)
+	close(hintsc)
+	close(resultc)
+	wwg.Wait()
+
+	fmt.Printf("finish\n")
+}
+
+func run(wg *sync.WaitGroup, taskc chan Task, queriesc chan []string) {
+	fr, err := os.OpenFile("query.txt", os.O_CREATE|os.O_RDONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+	defer fr.Close()
+
+	fw, err := os.OpenFile("query.txt", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+	defer fw.Close()
+
+	r := bufio.NewReader(fr)
+	i := uint64(0)
+	sent := true
+	var task Task
+	for {
+		if sent {
+			q, err := readQuery(r)
+			if err == io.EOF {
+				wg.Wait()
+				select {
+				case queries := <-queriesc:
+					writeQ(fw, queries)
+				default:
+				}
+				q, err = readQuery(r)
+			}
+
+			if err != nil {
+				return
+			}
+
+			i++
+			task = Task{q, i}
+			sent = false
+		}
+
+		select {
+		case taskc <- task:
+			sent = true
+		case queries := <-queriesc:
+			fmt.Printf("QUERIRES: %v \n", queries)
+			writeQ(fw, queries)
+		}
+	}
+}
+
+func readQuery(r *bufio.Reader) (string, error) {
+	line, isPrefix, err := r.ReadLine()
+	if err != nil {
+		return "", err
+	}
+
+	if isPrefix {
+		errmsg := fmt.Sprintf("line prefix, query=%s", line)
+		panic(errmsg)
+	}
+
+	return string(line), nil
+}
+
+func writeQueries(queriesc chan []string) {
 	f, err := os.OpenFile("query.txt", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		panic(err)
 	}
-	wtireQ(f, generateQueries(""))
-	f.Close()
 
-	go writeQueries(f, queriesc)
-
-	for i := 0; i < 1; i++ {
-		go worker(minPriority, taskc, hintsc, resultc, queriesc)
-	}
-
-	r := bufio.NewReader(f)
-	i := uint64(0)
-	for {
-		line, isPrefix, err := r.ReadLine()
-		if err != nil {
-			log.Printf("task error: %v\n", err)
-			return
-		}
-
-		if isPrefix {
-			errmsg := fmt.Sprintf("line prefix, index=%d query=%s", i, line)
-			panic(errmsg)
-		}
-
-		fmt.Printf("task %d : %s\n", i, line)
-		taskc <- Task{string(line), i}
-		i++
-
-	}
-
-}
-
-func writeQueries(f *os.File, queriesc chan []string) {
 	for queries := range queriesc {
-		wtireQ(f, queries)
+		writeQ(f, queries)
 	}
 }
 
-func wtireQ(f *os.File, queries []string) {
+func writeQ(f *os.File, queries []string) {
 	for _, query := range queries {
-		n, err := f.WriteString(query + "\n")
+		_, err := f.WriteString(query + "\n")
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("writed %d:%s\n", n, query)
 	}
 	f.Sync()
 }
@@ -104,36 +178,23 @@ func writeResult(resultc chan Result) {
 	defer f.Close()
 
 	for result := range resultc {
-		_ = result
-		/*
-			offset := result.Index * 2
-			ret, err := f.Seek(offset, 0)
-			if err != nil {
-				panic(err)
-			}
+		offset := int64(result.Index) * 2
+		ret, err := f.Seek(offset, 0)
+		if err != nil {
+			panic(err)
+		}
+		if ret != offset {
+			panic("seek error")
+		}
 
-			b := make([]byte, 2)
-			binary.LittleEndian.PutUint16(b, uint16(result.Mark))
-			if _, err := f.Write(b); err != nil {
-				panic(err)
-			}
-		*/
+		b := make([]byte, 2)
+		binary.LittleEndian.PutUint16(b, uint16(result.Mark))
+		if _, err := f.Write(b); err != nil {
+			panic(err)
+		}
+
 	}
 }
-
-/*
-func Mem(taskc chan Task, hintsc chan []Hint, resultc chan Result, queriesc chan []string) {
-
-	memHints = []Hint
-	for hints := range hintsc {
-		memHints = append(memHints, hints...)
-	}
-
-	for result := range resultc {
-	}
-
-}
-*/
 
 /********************************************************************************************************************************/
 
@@ -146,37 +207,32 @@ type Result struct {
 	Index uint64
 }
 
-func worker(minPriority int16, taskc chan Task, hintsc chan []Hint, resultc chan Result, queriesc chan []string) {
+func worker(minPriority int16, task Task, hintsc chan []Hint, resultc chan Result, queriesc chan []string) error {
 
-	for task := range taskc {
-		fmt.Printf("q: %v\n", task.Query)
-		hints, err := GetHints(task.Query, http.DefaultClient)
-		if err != nil {
-			// TODO
-			log.Printf("GetHints error for q %s : %v", task.Query, err)
-			continue
-		}
-
-		// save hints
-		if len(hints) > 0 {
-			hintsc <- hints
-		}
-
-		// save progress
-		m, err := resultMark(hints)
-		if err != nil {
-			// TODO
-			log.Printf("Algo error for q %s : %v", task.Query, err)
-			continue
-		}
-		resultc <- Result{m, task.Index}
-
-		// generate new queries
-		if m > minPriority {
-			queries := generateQueries(task.Query)
-			queriesc <- queries
-		}
+	hints, err := GetHints(task.Query, http.DefaultClient)
+	if err != nil {
+		return err
 	}
+
+	// save hints
+	if len(hints) > 0 {
+		hintsc <- hints
+	}
+
+	// save progress
+	m, err := resultMark(hints)
+	if err != nil {
+		return err
+	}
+	resultc <- Result{m, task.Index}
+
+	// generate new queries
+	if m > minPriority || (minPriority == 0 && m == zeroPriority) {
+		queries := generateQueries(task.Query)
+		queriesc <- queries
+	}
+
+	return nil
 }
 
 const letterBytes = " abcdefghijklmnopqrstuvwxyz"
