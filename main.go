@@ -235,13 +235,17 @@ func worker(minPriority int16, task Task, hintsc chan []Hint, resultc chan Resul
 	return nil
 }
 
-const letterBytes = " abcdefghijklmnopqrstuvwxyz"
+const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 
 func generateQueries(q string) []string {
-	qs := make([]string, 0, len(letterBytes))
+	qs := make([]string, 0, len(letterBytes)+1)
 	for _, b := range letterBytes {
 		gen := q + string(b)
 		qs = append(qs, gen)
+	}
+
+	if len(q) > 0 && q[len(q)-1] != ' ' {
+		qs = append(qs, q+" ")
 	}
 	return qs
 }
