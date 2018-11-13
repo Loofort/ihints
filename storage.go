@@ -10,6 +10,8 @@ import (
 	"sync"
 )
 
+const letterBytes = "abcdefghijklmnopqrstuvwxyz"
+
 type offsetBytes struct {
 	offset int64
 	bytes  []byte
@@ -67,7 +69,7 @@ func NewStorageNE(minPriority int16, queryFile, hintsFile string) (*Storage, fun
 	}()
 
 	// query reader
-	fr, err := os.OpenFile(queryFile, os.O_CREATE|os.O_RDONLY, 0644)
+	fr, err := os.OpenFile(queryFile, os.O_RDONLY, 0644)
 	mustNE(err)
 	rr := bufio.NewReader(fr)
 
@@ -79,11 +81,15 @@ func NewStorageNE(minPriority int16, queryFile, hintsFile string) (*Storage, fun
 		minPriority: minPriority,
 		hintsc:      hintsc,
 		progressc:   progressc,
+		rmux:        new(sync.Mutex),
 		fr:          fr,
 		rr:          rr,
+		wmux:        new(sync.Mutex),
 		fw:          fw,
-		closec:      make(chan struct{}),
+		wg:          new(sync.WaitGroup),
 		wgg:         wgg,
+		cmux:        new(sync.Mutex),
+		closec:      make(chan struct{}),
 	}
 	wait := func() { wgg.Wait() }
 	return stg, wait
@@ -211,8 +217,6 @@ func mustNE(err error) {
 }
 
 /******************************* Algorithm Part ****************************************/
-
-const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 
 func generateQueries(q string) []string {
 	qs := make([]string, 0, len(letterBytes)+1)

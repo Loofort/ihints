@@ -32,7 +32,8 @@ func GetHints(q string, client *http.Client) ([]Hint, error) {
 
 	sh := XMLShit{}
 	if err := xml.Unmarshal(body, &sh); err != nil {
-		return nil, err
+		body = re.ReplaceAll(body, []byte("\\n"))
+		return nil, fmt.Errorf("%v: %s", err, body)
 	}
 
 	hints, err := sh.GetHints()
