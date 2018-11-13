@@ -38,6 +38,7 @@ func GetHints(q string, client *http.Client) ([]Hint, error) {
 
 	hints, err := sh.GetHints()
 	if err != nil {
+		// <html><body><b>Http/1.1 Service Unavailable</b></body> </html>
 		body = re.ReplaceAll(body, []byte("\\n"))
 		return nil, fmt.Errorf("%v: %s", err, body)
 	}
@@ -46,7 +47,7 @@ func GetHints(q string, client *http.Client) ([]Hint, error) {
 }
 
 type Hint struct {
-	Term     string
+	Text     string
 	Priority int16
 }
 
@@ -77,7 +78,7 @@ func (sh XMLShit) GetHints() ([]Hint, error) {
 		}
 
 		hint := Hint{
-			Term:     dict.String[0],
+			Text:     dict.String[0],
 			Priority: dict.Integer[0],
 		}
 		hints = append(hints, hint)

@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-const letterBytes = "abcdefghijklmnopqrstuvwxyz"
+const letterBytes = "abcdefghijklmnopqrstuvwxyz0123456789." // "-_" are ignored
 
 type offsetBytes struct {
 	offset int64
@@ -176,7 +176,7 @@ func (stg *Storage) Set(q string, idx int64, hints []Hint) error {
 	stg.progressc <- offsetBytes{idx * 2, b}
 
 	// generate new queries
-	if m > stg.minPriority || (stg.minPriority == 0 && m == zeroPriority) {
+	if m >= stg.minPriority || (stg.minPriority == 0 && m == zeroPriority) {
 		qs := generateQueries(q)
 		stg.writeQueries(qs)
 	}
@@ -205,7 +205,7 @@ func queries2bytes(qs []string) []byte {
 func hints2bytes(q string, hints []Hint) []byte {
 	b := new(bytes.Buffer)
 	for _, hint := range hints {
-		fmt.Fprintf(b, "%d\t%s\t%s\n", hint.Priority, q, hint.Term) // can't be error
+		fmt.Fprintf(b, "%d\t%s\t%s\n", hint.Priority, q, hint.Text) // can't be error
 	}
 	return b.Bytes()
 }
