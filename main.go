@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Loofort/хhints/scrape"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -24,20 +25,26 @@ var (
 	uniqFile  = cmdUniq.Arg("file", "hints file path").Required().String()
 )
 
-func main() {
+func check(err error) {
+	if err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+}
 
+func main() {
 	switch kingpin.Parse() {
 	case "scrape":
 		dir := "data/" + time.Now().Format("2006-01-02") + "/"
 		err := os.MkdirAll(dir, 0755)
-		mustNE(err)
+		check(err)
 
 		fmt.Printf("scrape hint for priority %d to folder %s\n", *priority, dir)
 		scrape(int16(*priority), dir)
 	case "sort":
 		//start := time.Now()
 		tips, err := NewTipsFromFile(*sortFile)
-		mustNE(err)
+		check(err)
 
 		//t1 := time.Since(start)
 		SortTips(tips)
@@ -50,7 +57,7 @@ func main() {
 
 	case "leaf":
 		tips, err := NewTipsFromFile(*leafFile)
-		mustNE(err)
+		check(err)
 		SortTips(tips)
 
 		tip := tips[0]
@@ -72,7 +79,7 @@ func main() {
 
 	case "uniq":
 		tips, err := NewTipsFromFile(*uniqFile)
-		mustNE(err)
+		check(err)
 		SortTips(tips)
 
 		tip := tips[0]
@@ -91,19 +98,48 @@ func main() {
 	}
 }
 
+const (
+	hintsName = "hints.tsv"
+)
+
+func Scrape(hintsfile string, priority int16) {
+
+	qs := scrape.Generate("")
+	pipe, wait := scrape.NewMemPipe(qs)
+
+	fh, err := os.OpenFile(hintsfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	check(err)
+	storage := scrape.SafeWriter{Writer: fh}
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			var err error
+			finish := false
+			for !finish {
+				finish, err = scrape.Iterate(pipe, storage, priority)
+				if err != nil {
+					log.Printf("%v\n", err)
+				}
+			}
+		}()
+	}
+
+	wait()
+}
+
 func leafIndex(hintsFile string) {
 	root, err := NewIndexFromFile(hintsFile)
-	mustNE(err)
+	check(err)
 
 	f, err := os.OpenFile(hintsFile, os.O_RDONLY, 0644)
-	mustNE(err)
+	check(err)
 	r := bufio.NewReader(f)
 
 	printLeaf := func(node *IndexTree) {
 		if node.IsLeaf() {
 
 			_, err = f.Seek(node.offset, 0)
-			mustNE(err)
+			check(err)
 			r.Reset(f)
 
 			for i := 0; true; i++ {
@@ -111,7 +147,7 @@ func leafIndex(hintsFile string) {
 				if err == io.EOF {
 					return
 				}
-				mustNE(err)
+				check(err)
 
 				pices := bytes.SplitN(line, []byte{'\t'}, 3)
 				if bytes.Compare(node.name, pices[1]) != 0 {

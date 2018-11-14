@@ -1,4 +1,4 @@
-package main
+package stgne
 
 import (
 	"bufio"
@@ -230,13 +230,6 @@ func generateQueries(q string) []string {
 	}
 	return qs
 }
-
-const (
-	maxUint16    = ^uint16(0)
-	maxInt16     = int16(maxUint16 >> 1)
-	noHints      = -maxInt16 - 1
-	zeroPriority = int16(-51)
-)
 
 // returns max priority
 // or negative count if len(hints) < 50
