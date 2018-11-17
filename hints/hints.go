@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 )
@@ -38,13 +37,8 @@ func Sort(hs []Hint) {
 	})
 }
 
-func FromFile(hintsFile string) ([]Hint, error) {
-	f, err := os.OpenFile(hintsFile, os.O_RDONLY, 0644)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	r := bufio.NewReader(f)
+func FromReader(reader io.Reader) ([]Hint, error) {
+	r := bufio.NewReader(reader)
 
 	hs := []Hint{}
 	for {

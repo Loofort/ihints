@@ -2,27 +2,28 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
-	"time"
 
+	"github.com/Loofort/хhints/hints"
 	"github.com/Loofort/хhints/scrape"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	cmdScrape = kingpin.Command("scrape", "scrape itunes hints")
-	priority  = cmdScrape.Flag("priority", "set minimum desired hint priority").Default("0").Short('p').Int16()
-	cmdLeaf   = kingpin.Command("leaf", "extract hints leaves")
-	leafFile  = cmdLeaf.Arg("file", "hints file path").Required().String()
-	cmdSort   = kingpin.Command("sort", "sort hints by text and query")
-	sortFile  = cmdSort.Arg("file", "hints file path").Required().String()
-	cmdUniq   = kingpin.Command("uniq", "extract unique hints")
-	uniqFile  = cmdUniq.Arg("file", "hints file path").Required().String()
+	scrapeCmd      = kingpin.Command("scrape", "scrape itunes hints")
+	scrapePriority = scrapeCmd.Flag("priority", "set minimum desired hint priority").Default("0").Short('p').Int16()
+	scrapeQuery    = scrapeCmd.Flag("query", "query file").Default("").Short('q').String()
+	scrapeOutput   = scrapeCmd.Flag("output", "hint file to write results").Default("").Short('o').String()
+
+	leafCmd  = kingpin.Command("leaf", "extract hints leaves")
+	leafFile = leafCmd.Arg("file", "hints file path").Required().String()
+
+	uniqCmd  = kingpin.Command("uniq", "extract unique hints")
+	uniqFile = uniqCmd.Arg("file", "hints file path").Required().String()
 )
 
 func check(err error) {
@@ -35,81 +36,25 @@ func check(err error) {
 func main() {
 	switch kingpin.Parse() {
 	case "scrape":
-		dir := "data/" + time.Now().Format("2006-01-02") + "/"
-		err := os.MkdirAll(dir, 0755)
-		check(err)
-
-		fmt.Printf("scrape hint for priority %d to folder %s\n", *priority, dir)
-		scrape(int16(*priority), dir)
-	case "sort":
-		//start := time.Now()
-		tips, err := NewTipsFromFile(*sortFile)
-		check(err)
-
-		//t1 := time.Since(start)
-		SortTips(tips)
-
-		//t2 := time.Since(start)
-		//fmt.Printf("read file=%v; including sort=%v", t1, t2)
-		for _, tip := range tips {
-			fmt.Print(tip)
-		}
-
+		Scrape(*scrapeQuery, *scrapeOutput, *scrapePriority)
 	case "leaf":
-		tips, err := NewTipsFromFile(*leafFile)
-		check(err)
-		SortTips(tips)
-
-		tip := tips[0]
-		for _, t := range tips[1:] {
-			if t.Text != tip.Text {
-				fmt.Print(tip)
-				tip = t
-				continue
-			}
-
-			if strings.HasPrefix(t.Query, tip.Query) {
-				tip = t
-				continue
-			}
-
-			fmt.Print(tip)
-			tip = t
-		}
-
+		Leaf(*leafFile)
 	case "uniq":
-		tips, err := NewTipsFromFile(*uniqFile)
-		check(err)
-		SortTips(tips)
-
-		tip := tips[0]
-		for _, t := range tips[1:] {
-			if t.Text != tip.Text {
-				fmt.Print(tip)
-				tip = t
-				continue
-			}
-
-			if t.Priority > tip.Priority {
-				//log.Printf("unexpected priority order: %s > %s", t, tip)
-				tip = t
-			}
-		}
+		Uniq(*uniqFile)
 	}
 }
 
-const (
-	hintsName = "hints.tsv"
-)
-
-func Scrape(hintsfile string, priority int16) {
-
-	qs := scrape.Generate("")
+func Scrape(queryfile, hintsfile string, priority int16) {
+	qs, err := inputlines(queryfile)
+	check(err)
+	if len(qs) == 0 {
+		qs = scrape.Generate("")
+	}
 	pipe, wait := scrape.NewMemPipe(qs)
 
-	fh, err := os.OpenFile(hintsfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	storage, err := outputWriter(hintsfile)
 	check(err)
-	storage := scrape.SafeWriter{Writer: fh}
+	defer storage.Close()
 
 	for i := 0; i < 10; i++ {
 		go func() {
@@ -127,6 +72,107 @@ func Scrape(hintsfile string, priority int16) {
 	wait()
 }
 
+func Uniq(filename string) {
+	hs := sortedHints(filename)
+	hint := hs[0]
+	for _, t := range hs[1:] {
+		if t.Text != hint.Text {
+			fmt.Print(hint)
+			hint = t
+			continue
+		}
+
+		if t.Priority > hint.Priority {
+			hint = t
+		}
+	}
+}
+
+func Leaf(filename string) {
+	hs := sortedHints(filename)
+	hint := hs[0]
+	for _, t := range hs[1:] {
+		if t.Text != hint.Text {
+			fmt.Print(hint)
+			hint = t
+			continue
+		}
+
+		if strings.HasPrefix(t.Query, hint.Query) {
+			hint = t
+			continue
+		}
+
+		fmt.Print(hint)
+		hint = t
+	}
+}
+
+func sortedHints(hintsfile string) []hints.Hint {
+	r, err := inputReader(hintsfile)
+	check(err)
+	defer r.Close()
+
+	hs, err := hints.FromReader(r)
+	check(err)
+
+	hints.Sort(hs)
+	return hs
+}
+
+func inputlines(filename string) ([]string, error) {
+	r, err := inputReader(filename)
+	if err != nil {
+		return nil, err
+	}
+	if r == nil {
+		return nil, nil
+	}
+	defer r.Close()
+
+	lines, err := readlines(r)
+	return lines, err
+}
+
+func readlines(r io.Reader) ([]string, error) {
+	scanner := bufio.NewScanner(r)
+	lines := []string{}
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	return lines, scanner.Err()
+}
+
+func outputWriter(filename string) (io.WriteCloser, error) {
+	if filename != "" {
+		fh, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, err
+		}
+		return &scrape.SafeWriter{WriteCloser: fh}, nil
+	}
+
+	return &scrape.SafeWriter{WriteCloser: os.Stdout}, nil
+}
+
+func inputReader(filename string) (io.ReadCloser, error) {
+	if filename != "" {
+		file, err := os.Open(filename)
+		return file, err
+	}
+
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if stat.Mode()&os.ModeCharDevice == 0 {
+		return os.Stdin, nil
+	}
+	return nil, nil
+}
+
+/*
 func leafIndex(hintsFile string) {
 	root, err := NewIndexFromFile(hintsFile)
 	check(err)
@@ -165,3 +211,4 @@ func leafIndex(hintsFile string) {
 
 	WalkTree(root, printLeaf)
 }
+*/

@@ -102,12 +102,12 @@ func Generate(q string) []string {
 }
 
 type SafeWriter struct {
-	io.Writer
+	io.WriteCloser
 	sync.Mutex
 }
 
 func (sf *SafeWriter) Write(p []byte) (int, error) {
 	sf.Lock()
 	defer sf.Unlock()
-	return sf.Writer.Write(p)
+	return sf.WriteCloser.Write(p)
 }
