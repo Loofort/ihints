@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Loofort/xscrape/searches"
+	"github.com/Loofort/xscrape/search"
 )
 
 type Pipe interface {
@@ -22,19 +22,19 @@ func Iterate(client *http.Client, pipe Pipe, storage io.Writer, country string) 
 	defer done()
 
 	// scrape search from itunes
-	apps, err := searches.Scrape(client, term, country)
+	apps, err := search.Scrape(client, term, country)
 	if err != nil {
 		return false, fmt.Errorf("can't scrape '%s': %v", term, err)
 	}
 
-	// save searches and apps
+	// save search and apps
 	if len(apps) == 0 {
 		return false, nil
 	}
 
-	// save searches
-	ss := searches.FromApps(term, apps)
-	storage.Write(searches.ToBytes(ss))
+	// save search
+	b := search.ToBytes(term, apps)
+	storage.Write(b)
 
 	// todo:
 	// save apps

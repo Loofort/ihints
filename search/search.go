@@ -1,4 +1,4 @@
-package searches
+package search
 
 import (
 	"bufio"
@@ -120,11 +120,17 @@ func FromApps(term string, apps []App) []Search {
 	return ss
 }
 
-func ToBytes(ss []Search) []byte {
+func ToBytes(term string, apps []App) []byte {
 	b := new(bytes.Buffer)
-	for _, search := range ss {
-		fmt.Fprintf(b, "%s\n", search) // can't be error
+
+	fmt.Fprintf(b, "%s\t", term)
+	for i, app := range apps {
+		fmt.Fprintf(b, "%s", app.BundleID) // can't be error
+		if i < len(apps)-1 {
+			b.WriteString(" ")
+		}
 	}
+	b.WriteString("\n")
 	return b.Bytes()
 }
 

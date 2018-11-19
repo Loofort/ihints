@@ -4,9 +4,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Loofort/xscrape/iostuff"
-	"github.com/Loofort/xscrape/searches/scrape"
+	"github.com/Loofort/xscrape/search/scrape"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -40,15 +41,19 @@ func Scrape(termfile, searchesfile string) {
 	check(err)
 	defer storage.Close()
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		go func() {
 			var err error
 			finish := false
+			sleep := time.Minute / 20
 			for !finish {
+				start := time.Now()
 				finish, err = scrape.Iterate(http.DefaultClient, pipe, storage, "")
 				if err != nil {
 					log.Printf("%v\n", err)
 				}
+				took := time.Since(start)
+				time.Sleep(sleep - took)
 			}
 		}()
 	}

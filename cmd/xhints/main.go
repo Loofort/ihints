@@ -24,8 +24,9 @@ var (
 	leafCmd  = kingpin.Command("leaf", "extract hints leaves")
 	leafFile = leafCmd.Arg("file", "hints file path").String()
 
-	termCmd  = kingpin.Command("terms", "produce terms from hints")
-	termFile = termCmd.Arg("file", "hints file path").String()
+	termCmd      = kingpin.Command("terms", "produce terms from hints")
+	termFile     = termCmd.Arg("file", "hints file path").String()
+	termPriority = termCmd.Flag("priority", "set minimum desired hint priority").Default("0").Short('p').Int16()
 )
 
 func check(err error) {
@@ -44,7 +45,7 @@ func main() {
 	case "leaf":
 		Leaf(*leafFile)
 	case "terms":
-		Term(*termFile)
+		Term(*termFile, *termPriority)
 	}
 }
 
@@ -83,7 +84,7 @@ func scrapePipe(queryfile string) (iostuff.Pipe, func() error) {
 	return iostuff.NewMemPipe(qs)
 }
 
-func Term(hintsfile string) {
+func Term(hintsfile string, priority int16) {
 	r, err := iostuff.InputReader(hintsfile)
 	check(err)
 	defer r.Close()
@@ -92,7 +93,9 @@ func Term(hintsfile string) {
 	check(err)
 
 	for _, hint := range hs {
-		fmt.Println(hint.Term)
+		if hint.Priority >= priority {
+			fmt.Println(hint.Term)
+		}
 	}
 }
 
