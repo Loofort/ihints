@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 
-	"github.com/Loofort/хhints/hints"
+	"github.com/Loofort/xscrape/hints"
 )
 
 const (
@@ -99,15 +98,4 @@ func Generate(q string) []string {
 		qs = append(qs, q+" ")
 	}
 	return qs
-}
-
-type SafeWriter struct {
-	io.WriteCloser
-	sync.Mutex
-}
-
-func (sf *SafeWriter) Write(p []byte) (int, error) {
-	sf.Lock()
-	defer sf.Unlock()
-	return sf.WriteCloser.Write(p)
 }

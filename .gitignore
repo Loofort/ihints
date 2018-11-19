@@ -1,2 +1,3 @@
 data/*
-xhints
+cmd/xhints/xhints
+cmd/xsearch/xsearch

@@ -110,3 +110,44 @@ func WalkTree(node *IndexTree, foo func(*IndexTree)) {
 		}
 	}
 }
+
+/*
+func leafIndex(hintsFile string) {
+	root, err := NewIndexFromFile(hintsFile)
+	check(err)
+
+	f, err := os.OpenFile(hintsFile, os.O_RDONLY, 0644)
+	check(err)
+	r := bufio.NewReader(f)
+
+	printLeaf := func(node *IndexTree) {
+		if node.IsLeaf() {
+
+			_, err = f.Seek(node.offset, 0)
+			check(err)
+			r.Reset(f)
+
+			for i := 0; true; i++ {
+				line, err := r.ReadBytes('\n')
+				if err == io.EOF {
+					return
+				}
+				check(err)
+
+				pices := bytes.SplitN(line, []byte{'\t'}, 3)
+				if bytes.Compare(node.name, pices[1]) != 0 {
+					if i == 0 {
+						log.Printf("node.name %s ,pices[1] %s\n", node.name, pices[1])
+					}
+					return
+				}
+
+				fmt.Printf("%s", line)
+			}
+
+		}
+	}
+
+	WalkTree(root, printLeaf)
+}
+*/

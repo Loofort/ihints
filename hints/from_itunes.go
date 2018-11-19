@@ -15,6 +15,7 @@ var re = regexp.MustCompile(`\r?\n`)
 
 // Scrapes hints from itunes for given query
 func Scrape(q string, client *http.Client) ([]Hint, error) {
+	// https://search.itunes.apple.com/WebObjects/MZSearchHints.woa/wa/hints?media=software&q=qwe
 	v := url.Values{}
 	v.Set("media", "software")
 	v.Set("q", q)
@@ -31,7 +32,7 @@ func Scrape(q string, client *http.Client) ([]Hint, error) {
 		return nil, err
 	}
 
-	sh := XMLShit{}
+	sh := serp{}
 	if err := xml.Unmarshal(body, &sh); err != nil {
 		body = re.ReplaceAll(body, []byte("\\n"))
 		return nil, fmt.Errorf("%v: %s", err, body)
@@ -47,7 +48,7 @@ func Scrape(q string, client *http.Client) ([]Hint, error) {
 	return hints, nil
 }
 
-type XMLShit struct {
+type serp struct {
 	Key    []string `xml:"dict>key"`
 	String []string `xml:"dict>string"`
 	Dict   []struct {
@@ -57,7 +58,7 @@ type XMLShit struct {
 	} `xml:"dict>array>dict"`
 }
 
-func (sh XMLShit) GetHints(q string) ([]Hint, error) {
+func (sh serp) GetHints(q string) ([]Hint, error) {
 	// check valid format
 	if len(sh.Key) != 2 || len(sh.String) != 1 ||
 		sh.Key[0] != "title" || sh.Key[1] != "hints" || sh.String[0] != "Suggestions" {
@@ -76,7 +77,7 @@ func (sh XMLShit) GetHints(q string) ([]Hint, error) {
 		hint := Hint{
 			Priority: dict.Integer[0],
 			Query:    q,
-			Text:     dict.String[0],
+			Term:     dict.String[0],
 		}
 		hints = append(hints, hint)
 	}

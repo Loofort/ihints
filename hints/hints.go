@@ -12,12 +12,12 @@ import (
 type Hint struct {
 	Priority int16
 	Query    string
-	Text     string
+	Term     string
 }
 
 func (hint Hint) String() string {
 	priority := strconv.Itoa(int(hint.Priority))
-	return priority + "\t" + hint.Query + "\t" + hint.Text
+	return priority + "\t" + hint.Query + "\t" + hint.Term
 }
 
 func ToBytes(hints []Hint) []byte {
@@ -30,10 +30,10 @@ func ToBytes(hints []Hint) []byte {
 
 func Sort(hs []Hint) {
 	sort.Slice(hs, func(i, j int) bool {
-		if hs[i].Text == hs[j].Text {
+		if hs[i].Term == hs[j].Term {
 			return hs[i].Query < hs[j].Query
 		}
-		return hs[i].Text < hs[j].Text
+		return hs[i].Term < hs[j].Term
 	})
 }
 
@@ -63,7 +63,7 @@ func FromReader(reader io.Reader) ([]Hint, error) {
 		hint := Hint{
 			Priority: int16(priority),
 			Query:    string(pices[1]),
-			Text:     string(pices[2][:len(pices[2])-1]), // cutoff last \n symbol
+			Term:     string(pices[2][:len(pices[2])-1]), // cutoff last \n symbol
 		}
 		hs = append(hs, hint)
 	}
