@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 type Hint struct {
@@ -38,34 +39,31 @@ func Sort(hs []Hint) {
 }
 
 func FromReader(reader io.Reader) ([]Hint, error) {
-	r := bufio.NewReader(reader)
-
+	scanner := bufio.NewScanner(reader)
 	hs := []Hint{}
-	for {
-		line, err := r.ReadBytes('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	for scanner.Scan() {
+		line := scanner.Text()
 
-		pices := bytes.SplitN(line, []byte{'\t'}, 3)
+		pices := strings.SplitN(line, "\t", 3)
 		if len(pices) != 3 {
 			return nil, fmt.Errorf("incorrect line: %s", line)
 		}
 
-		priority, err := strconv.Atoi(string(pices[0]))
+		priority, err := strconv.Atoi(pices[0])
 		if err != nil {
 			return nil, fmt.Errorf("bad priority: %v", err)
 		}
 
 		hint := Hint{
 			Priority: int16(priority),
-			Query:    string(pices[1]),
-			Term:     string(pices[2][:len(pices[2])-1]), // cutoff last \n symbol
+			Query:    pices[1],
+			Term:     pices[2],
 		}
 		hs = append(hs, hint)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	return hs, nil

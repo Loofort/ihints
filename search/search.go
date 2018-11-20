@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -155,34 +156,29 @@ func Sort(ss []Search) {
 }
 
 func FromReader(reader io.Reader) ([]Search, error) {
-	r := bufio.NewReader(reader)
-
+	scanner := bufio.NewScanner(reader)
 	ss := []Search{}
-	for {
-		line, err := r.ReadBytes('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	for scanner.Scan() {
+		line := scanner.Text()
 
-		pices := bytes.SplitN(line, []byte{'\t'}, 3)
-		if len(pices) != 3 {
+		pices := strings.SplitN(line, "\t", 2)
+		if len(pices) != 2 {
 			return nil, fmt.Errorf("incorrect line: %s", line)
 		}
 
-		pos, err := strconv.Atoi(string(pices[0]))
-		if err != nil {
-			return nil, fmt.Errorf("bad position: %v", err)
+		bundles := strings.Split(pices[1], "\t")
+		for i, bundleID := range bundles {
+			search := Search{
+				Position: byte(i) + 1,
+				BundleID: bundleID,
+				Term:     pices[0],
+			}
+			ss = append(ss, search)
 		}
+	}
 
-		search := Search{
-			Position: byte(pos),
-			BundleID: string(pices[1]),
-			Term:     string(pices[2][:len(pices[2])-1]), // cutoff last \n symbol
-		}
-		ss = append(ss, search)
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	return ss, nil
