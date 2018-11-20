@@ -35,7 +35,7 @@ func Scrape(termfile, searchesfile string) {
 	r, err := iostuff.InputReader(termfile)
 	check(err)
 	defer r.Close()
-	pipe, wait := iostuff.NewMemReaderPipe(r)
+	pipe, wait := iostuff.NewStreamPipe(r)
 
 	storage, err := iostuff.OutputWriter(searchesfile)
 	check(err)

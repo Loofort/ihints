@@ -62,14 +62,18 @@ func (pipe basePipe) Close() {
 }
 
 func (pipe basePipe) Pull() (string, func()) {
-	query, ok := <-pipe.taskc
+	line, ok := <-pipe.taskc
+	return pipe.pull(line, ok)
+}
+
+func (pipe basePipe) pull(line string, ok bool) (string, func()) {
 	if !ok {
 		return "", nil
 	}
 
 	pipe.wg.Add(1)
 	done := func() { pipe.wg.Done() }
-	return query, done
+	return line, done
 }
 
 func (pipe basePipe) Push(queries []string) {
@@ -78,15 +82,20 @@ func (pipe basePipe) Push(queries []string) {
 
 /******************* Pipe implementations **********************/
 
-func NewMemPipe(queries []string) (Pipe, func() error) {
+func NewBufferPipe(queries []string) (basePipe, func() error) {
 	pipe, wait := newBasePipe(make(chan string), make(chan []string))
-	go memLoop(pipe, queries)
+	pipe.wg.Add(1)
+	go bufferLoop(pipe, queries)
 	return pipe, wait
 }
 
-func memLoop(pipe basePipe, queries []string) {
+func bufferLoop(pipe basePipe, queries []string) {
+	defer pipe.wg.Done()
 	query := ""
 	taskc := pipe.taskc
+	if len(queries) == 0 {
+		pipe.wg.Add(1)
+	}
 	for {
 
 		if len(queries) == 0 {
@@ -120,7 +129,7 @@ func memLoop(pipe basePipe, queries []string) {
 	}
 }
 
-func NewReaderPipe(r io.Reader) (Pipe, func() error) {
+func NewReaderPipe(r io.Reader) (basePipe, func() error) {
 	pipe, wait := newBasePipe(make(chan string), nil)
 
 	scanner := bufio.NewScanner(r)
@@ -159,7 +168,7 @@ type memReaderPipe struct {
 
 func NewMemReaderPipe(r io.Reader) (Pipe, func() error) {
 	rpipe, rwait := NewReaderPipe(r)
-	mpipe, mwait := NewMemPipe(nil)
+	mpipe, mwait := NewBufferPipe(nil)
 
 	pipe := memReaderPipe{
 		read:    rpipe,
@@ -196,4 +205,56 @@ func (pipe memReaderPipe) Push(queries []string) {
 
 func (pipe memReaderPipe) Close() {
 	pipe.current.Close()
+}
+
+/**************************** *****************************************/
+// streamPipe reads from reader as a first priority or from buffer as a secondary
+type streamPipe struct {
+	reader basePipe
+	buffer basePipe
+}
+
+func NewStreamPipe(r io.Reader) (Pipe, func() error) {
+	reader, rwait := NewReaderPipe(r)
+	buffer, bwait := NewBufferPipe(nil)
+
+	pipe := streamPipe{
+		reader: reader,
+		buffer: buffer,
+	}
+
+	wait := func() error {
+		err := rwait()
+		if err != nil {
+			buffer.Close()
+			return err
+		}
+
+		return bwait()
+	}
+	return pipe, wait
+}
+
+func (pipe streamPipe) Pull() (string, func()) {
+	select {
+	case line, ok := <-pipe.reader.taskc:
+		return pipe.reader.pull(line, ok)
+	default:
+	}
+
+	select {
+	case line, ok := <-pipe.reader.taskc:
+		return pipe.reader.pull(line, ok)
+	case line, ok := <-pipe.buffer.taskc:
+		return pipe.buffer.pull(line, ok)
+	}
+}
+
+func (pipe streamPipe) Push(queries []string) {
+	pipe.buffer.Push(queries)
+}
+
+func (pipe streamPipe) Close() {
+	pipe.reader.Close()
+	pipe.buffer.Close()
 }

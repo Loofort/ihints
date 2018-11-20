@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"sort"
 	"strconv"
@@ -45,6 +46,16 @@ func Scrape(client *http.Client, term, country string) ([]App, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	// expect status 200
+	if resp.StatusCode != http.StatusOK {
+		body, err := httputil.DumpResponse(resp, true)
+		if err != nil {
+			errmsg := fmt.Sprintf("cant dump resp: %v", err)
+			body = []byte(errmsg)
+		}
+		return nil, fmt.Errorf("unexpected http status %d; dump: %s", resp.StatusCode, body)
+	}
 
 	dec := json.NewDecoder(resp.Body)
 	dec.DisallowUnknownFields()
