@@ -31,12 +31,14 @@ type serp struct {
 	Results     []App
 }
 
-func Scrape(client *http.Client, term, country string) ([]App, error) {
+func Scrape(client *http.Client, term, country string, limit int) ([]App, error) {
 	// https://itunes.apple.com/search?country=us&entity=software&term=flappy
 	// skip media and limit (=50) and attribute
 	v := url.Values{}
 	v.Set("entity", "software")
 	v.Set("term", term)
+	v.Set("limit", strconv.Itoa(limit))
+
 	if country != "" {
 		v.Set("country", country)
 	}
@@ -67,6 +69,13 @@ func Scrape(client *http.Client, term, country string) ([]App, error) {
 		return nil, fmt.Errorf("unable parse resp: %v; url: %s", err, url)
 	}
 
+	seen := make(map[string]struct{}, limit)
+	for _, app := range se.Results {
+		if _, ok := seen[app.BundleID]; ok {
+			return nil, fmt.Errorf("duplicate bundle in response: %s", app.BundleID)
+		}
+		seen[app.BundleID] = struct{}{}
+	}
 	return se.Results, nil
 }
 
@@ -146,12 +155,27 @@ func ToBytes(term string, apps []App) []byte {
 	return b.Bytes()
 }
 
+func Compare(one, two Search) int8 {
+	switch {
+	case one.Term < two.Term:
+		return -1
+	case one.Term > two.Term:
+		return 1
+	}
+
+	switch {
+	case one.BundleID < two.BundleID:
+		return -1
+	case one.BundleID < two.BundleID:
+		return 1
+	}
+
+	return 0
+}
+
 func Sort(ss []Search) {
 	sort.Slice(ss, func(i, j int) bool {
-		if ss[i].Term == ss[j].Term {
-			return ss[i].BundleID < ss[j].BundleID
-		}
-		return ss[i].Term < ss[j].Term
+		return Compare(ss[i], ss[j]) < 0
 	})
 }
 
@@ -166,7 +190,7 @@ func FromReader(reader io.Reader) ([]Search, error) {
 			return nil, fmt.Errorf("incorrect line: %s", line)
 		}
 
-		bundles := strings.Split(pices[1], "\t")
+		bundles := strings.Split(pices[1], " ")
 		for i, bundleID := range bundles {
 			search := Search{
 				Position: byte(i) + 1,

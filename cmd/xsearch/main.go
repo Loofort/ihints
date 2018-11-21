@@ -1,20 +1,26 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/Loofort/xscrape/iostuff"
+	"github.com/Loofort/xscrape/search/diff"
 	"github.com/Loofort/xscrape/search/scrape"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	scrapeCmd    = kingpin.Command("scrape", "scrape itunes hints")
+	scrapeCmd    = kingpin.Command("scrape", "scrape itunes search")
 	scrapeInput  = scrapeCmd.Flag("input", "term file").Default("").Short('i').String()
 	scrapeOutput = scrapeCmd.Flag("output", "hint file to write results").Default("").Short('o').String()
+
+	diffCmd   = kingpin.Command("diff", "calculate difference between two search files")
+	diffFile1 = diffCmd.Arg("file1", "search 1 file path").String()
+	diffFile2 = diffCmd.Arg("file2", "search 2 file path").String()
 )
 
 func check(err error) {
@@ -28,6 +34,25 @@ func main() {
 	switch kingpin.Parse() {
 	case "scrape":
 		Scrape(*scrapeInput, *scrapeOutput)
+	case "diff":
+		Diff(*diffFile1, *diffFile2)
+	}
+}
+
+func Diff(searchfile1, searchfile2 string) {
+	r1, err := iostuff.InputReader(searchfile1)
+	check(err)
+	defer r1.Close()
+
+	r2, err := iostuff.InputReader(searchfile2)
+	check(err)
+	defer r2.Close()
+
+	diffs, err := diff.Diff(r1, r2)
+	check(err)
+
+	for _, df := range diffs {
+		fmt.Println(df)
 	}
 }
 

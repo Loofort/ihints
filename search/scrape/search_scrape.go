@@ -22,7 +22,7 @@ func Iterate(client *http.Client, pipe Pipe, storage io.Writer, country string) 
 	defer done()
 
 	// scrape search from itunes
-	apps, err := search.Scrape(client, term, country)
+	apps, err := search.Scrape(client, term, country, 200)
 	if err != nil {
 		return false, fmt.Errorf("can't scrape '%s': %v", term, err)
 	}
